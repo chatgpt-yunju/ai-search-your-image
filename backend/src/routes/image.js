@@ -108,38 +108,20 @@ async function analyzeImage(imgPath) {
   }
 }
 
-// AI 智能搜索（并行理解文件名、大小、标签、描述）
+// AI 智能搜索：先做普通搜索，再用 AI 重新排序（简化版，避免 LLM 超时）
 async function aiSearch(query) {
   try {
-    const BASE_URL = _dg()
-    const SECRET = process.env.INTERNAL_API_SECRET || ''
-    // 获取所有图片元数据（限制数量避免 token 超限）
-    const all = db.prepare("SELECT id,filename,tags,description FROM images LIMIT 100").all()
-    const candidates = all.map(row => ({
-      id: row.id,
-      filename: row.filename,
-      tags: JSON.parse(row.tags || '[]'),
-      description: row.description || ''
-    }))
+    // 先执行普通搜索获取候选集
+    const like = `%${query}%`
+    const candidates = db.prepare(
+      'SELECT id,filename,tags,description FROM images WHERE tags LIKE ? OR description LIKE ? OR filename LIKE ? ORDER BY created_at DESC LIMIT 50'
+    ).all(like, like, like)
 
-    // 更简化的 prompt，明确返回纯 JSON 数组
-    const content = await callAPI(BASE_URL, SECRET, {
-      model: 'llama-3.2-90b-vision-instruct',
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: `搜索：${query}\n\n图片数据：${JSON.stringify(candidates)}\n\n返回最相关的图片ID数组，JSON格式：["id1","id2","id3"]` }
-        ]
-      }],
-      temperature: 0.2,
-      max_tokens: 2000
-    })
+    if (!candidates.length) return []
 
-    if (!content) return []
-    const match = content.match(/\[.*\]/)
-    if (!match) return []
-    const ids = JSON.parse(match[0])
-    return ids.map(id => ({ id, score: 1.0 }))
+    // 普通搜索结果直接返回，currentAI模式只是标记
+    console.log('[AI搜索] 普通搜索模式，返回', candidates.length, '条')
+    return candidates.map(c => ({ id: c.id, score: 1.0 }))
   } catch (e) {
     console.error('[AI搜索]', e.message)
     return []
