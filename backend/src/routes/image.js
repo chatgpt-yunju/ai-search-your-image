@@ -56,15 +56,21 @@ async function callAPI(BASE_URL, SECRET, body) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 60000)
   try {
-    const resp = await fetch(`${BASE_URL}/v1/chat/completions`, {
+    const url = `${BASE_URL}/v1/chat/completions`
+    const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SECRET}` },
       body: JSON.stringify(body),
       signal: controller.signal
     })
     clearTimeout(timeoutId)
-    if (!resp.ok) { console.error('[AI] HTTP', resp.status); return '' }
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => 'no body')
+      console.error('[AI] HTTP', resp.status, errText.slice(0, 200))
+      return ''
+    }
     const json = await resp.json()
+    console.log('[AI] 响应结构:', { hasChoices: !!json.choices, choicesLen: json.choices?.length, content: json.choices?.[0]?.message?.content?.slice(0, 100) })
     return json.choices?.[0]?.message?.content || ''
   } catch (e) {
     clearTimeout(timeoutId)
@@ -134,7 +140,7 @@ async function aiSearch(query) {
       }],
       temperature: 0.2,
       max_tokens: 2000
-    }) as string
+    })
 
     if (!content) return candidates.map(c => ({ id: c.id, score: 1.0 }))
 
@@ -147,7 +153,7 @@ async function aiSearch(query) {
     // 3. 按 LLM 排序返回，并分配分数
     const idSet = new Set(sortedIds)
     const scoreMap = new Map()
-    sortedIds.forEach((id: string, idx: number) => {
+    sortedIds.forEach((id, idx) => {
       scoreMap.set(id, 1 - idx / sortedIds.length) // 排名越前分数越高
     })
 
