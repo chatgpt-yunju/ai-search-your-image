@@ -13,13 +13,16 @@
     <!-- 搜索栏 -->
     <div class="search-bar">
       <div class="search-inner">
-        <input v-model="searchQ" @keyup.enter="doSearch" placeholder="搜索图片描述、标签..." class="search-input" />
-        <button @click="doSearch" class="btn-search">搜索</button>
+        <button @click="aiMode = !aiMode" :class="['btn-ai-toggle', { active: aiMode }]" title="切换 AI 智能搜索">
+          {{ aiMode ? '🤖 AI' : '🔍 普通' }}
+        </button>
+        <input v-model="searchQ" @keyup.enter="doSearch" :placeholder="aiMode ? '用自然语言描述你想找的图片...' : '搜索标签、描述、文件名...'" class="search-input" />
+        <button @click="doSearch" class="btn-search">{{ aiMode ? '✨ AI 搜索' : '搜索' }}</button>
         <label class="btn-similar" title="以图搜图">
           <input type="file" accept="image/*" @change="doSimilar" style="display:none" />
           以图搜图
         </label>
-        <button v-if="searchMode" @click="clearSearch" class="btn-clear">✕ 清除</button>
+        <button v-if="searchMode || aiMode" @click="clearSearch" class="btn-clear">✕ 清除</button>
       </div>
     </div>
 
@@ -98,7 +101,11 @@
         </div>
         <div class="detail-info">
           <div class="detail-filename">{{ detail.filename }}</div>
-          <div class="detail-meta">{{ detail.width }}×{{ detail.height }} · {{ formatSize(detail.compressed_size) }} (原 {{ formatSize(detail.size) }})</div>
+          <div class="detail-meta">
+            {{ detail.width }}×{{ detail.height }} · {{ formatSize(detail.compressed_size) }} (原 {{ formatSize(detail.size) }})
+            <span v-if="detail.score !== undefined" class="ai-score">🎯 AI匹配度: {{ Math.round(detail.score * 100) }}%</span>
+            <span v-if="detail.reason" class="ai-reason">（{{ detail.reason }}）</span>
+          </div>
           <div class="detail-desc" v-if="detail.description">{{ detail.description }}</div>
           <div class="detail-tags">
             <span v-for="t in detail.tags" :key="t" class="tag">{{ t }}</span>
@@ -134,6 +141,7 @@ const detail = ref(null)
 const copied = ref(false)
 const searchQ = ref('')
 const searchMode = ref(false)
+const aiMode = ref(false)
 const activeTag = ref('')
 const uploadPassword = ref('')
 
@@ -173,10 +181,16 @@ function filterTag(tag) {
 async function doSearch() {
   if (!searchQ.value.trim()) return clearSearch()
   searchMode.value = true
+  aiMode.value = aiMode.value // keep current mode
   loading.value = true
   try {
-    const r = await fetch(`/api/img/search?q=${encodeURIComponent(searchQ.value)}`).then(r => r.json())
-    images.value = r.list
+    if (aiMode.value) {
+      const r = await fetch(`/api/img/ai-search?q=${encodeURIComponent(searchQ.value)}`).then(r => r.json())
+      images.value = r.list || []
+    } else {
+      const r = await fetch(`/api/img/search?q=${encodeURIComponent(searchQ.value)}`).then(r => r.json())
+      images.value = r.list
+    }
     hasMore.value = false
   } finally { loading.value = false }
 }
@@ -184,6 +198,7 @@ async function doSearch() {
 function clearSearch() {
   searchQ.value = ''
   searchMode.value = false
+  aiMode.value = false
   activeTag.value = ''
   loadImages(true)
 }
@@ -316,6 +331,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .search-inner { max-width: 1400px; margin: 0 auto; display: flex; gap: 8px; align-items: center; }
 .search-input { flex: 1; padding: 8px 14px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; outline: none; }
 .search-input:focus { border-color: #0071e3; }
+.btn-ai-toggle { padding: 8px 14px; border: 1px solid #d2d2d7; border-radius: 8px; cursor: pointer; font-size: 14px; background: #fff; white-space: nowrap; color: #666; }
+.btn-ai-toggle.active { background: #0071e3; color: #fff; border-color: #0071e3; }
 .btn-search, .btn-similar, .btn-clear { padding: 8px 14px; border: 1px solid #d2d2d7; border-radius: 8px; cursor: pointer; font-size: 14px; background: #fff; white-space: nowrap; }
 .btn-search:hover, .btn-similar:hover { border-color: #0071e3; color: #0071e3; }
 .btn-clear { color: #ff3b30; border-color: #ff3b30; }
@@ -388,6 +405,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .btn-copy { padding: 6px 10px; background: #0071e3; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; white-space: nowrap; }
 .btn-delete { width: 100%; padding: 8px; background: none; border: 1px solid #ff3b30; color: #ff3b30; border-radius: 8px; cursor: pointer; font-size: 14px; }
 .btn-delete:hover { background: #ff3b30; color: #fff; }
+
+.ai-score { margin-left: 12px; color: #34c759; font-weight: 600; font-size: 13px; }
+.ai-reason { margin-left: 6px; color: #666; font-size: 12px; font-style: italic; }
 
 @media (max-width: 600px) {
   .detail-modal { flex-direction: column; }

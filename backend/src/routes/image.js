@@ -108,6 +108,47 @@ async function analyzeImage(imgPath) {
   }
 }
 
+// AI 智能搜索（并行理解文件名、大小、标签、描述）
+async function aiSearch(query) {
+  try {
+    const BASE_URL = _dg()
+    const SECRET = process.env.INTERNAL_API_SECRET || ''
+    // 获取所有图片元数据（限制数量避免 token 超限）
+    const all = db.prepare("SELECT id,filename,ext,size,width,height,tags,description FROM images LIMIT 200").all()
+    const candidates = all.map(row => ({
+      id: row.id,
+      filename: row.filename,
+      ext: row.ext,
+      size: row.size,
+      width: row.width,
+      height: row.height,
+      tags: JSON.parse(row.tags || '[]'),
+      description: row.description || ''
+    }))
+
+    const content = await callAPI(BASE_URL, SECRET, {
+      model: 'llama-3.2-90b-vision-instruct',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: `用户搜索：${query}\n\n图片库元数据（JSON）：\n${JSON.stringify(candidates, null, 2)}\n\n请根据用户搜索意图，找出最相关的图片。返回JSON格式：{"matches":[{"id":"图片ID","score":0.95,"reason":"匹配原因"}]}。score为0-1的匹配度分数。只返回JSON，不要任何其他内容。` }
+        ]
+      }],
+      temperature: 0.2,
+      max_tokens: 2000
+    })
+
+    if (!content) return []
+    const match = content.match(/\{[\s\S]*?\}/)
+    if (!match) return []
+    const result = JSON.parse(match[0])
+    return Array.isArray(result.matches) ? result.matches : []
+  } catch (e) {
+    console.error('[AI搜索]', e.message)
+    return []
+  }
+}
+
 // 上传（多文件）
 router.post('/upload', upload.array('files', 20), async (req, res) => {
   if (!req.files?.length) return res.status(400).json({ error: '请选择图片' })
@@ -178,6 +219,30 @@ router.get('/search', (req, res) => {
     'SELECT * FROM images WHERE tags LIKE ? OR description LIKE ? OR filename LIKE ? ORDER BY created_at DESC LIMIT 50'
   ).all(like, like, like)
   res.json({ list: rows.map(r => ({ ...r, tags: JSON.parse(r.tags || '[]') })) })
+})
+
+// AI 智能搜索（并行搜索文件名、大小、标签、描述）
+router.get('/ai-search', async (req, res) => {
+  const q = req.query.q?.trim()
+  if (!q) return res.json({ list: [] })
+  try {
+    const matches = await aiSearch(q)
+    if (!matches.length) return res.json({ list: [] })
+    // 批量获取图片详情
+    const ids = matches.map(m => m.id)
+    const placeholders = ids.map(() => '?').join(',')
+    const rows = db.prepare(`SELECT * FROM images WHERE id IN (${placeholders})`).all(...ids)
+    const map = new Map(rows.map(r => [r.id, r]))
+    const results = matches
+      .map(m => map.get(m.id))
+      .filter(Boolean)
+      .map(r => ({ ...r, tags: JSON.parse(r.tags || '[]'), score: matches.find(m => m.id === r.id).score, reason: matches.find(m => m.id === r.id).reason }))
+      .sort((a, b) => b.score - a.score)
+    res.json({ list: results })
+  } catch (e) {
+    console.error('[AI搜索]', e.message)
+    res.json({ list: [], error: e.message })
+  }
 })
 
 // 所有标签

@@ -6,7 +6,6 @@ module.exports = {
     env: {
       NODE_ENV: "production",
       PORT: "3022",
-      AI_GATEWAY_URL: "https://api.yunjunet.cn",
       INTERNAL_API_SECRET: "${INTERNAL_API_SECRET}",
       STORAGE_PATH: "/home/ubuntu/imgbed-storage",
       BASE_URL: "https://demo001.opensora2.cn"
