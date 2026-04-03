@@ -108,10 +108,10 @@ async function analyzeImage(imgPath) {
   }
 }
 
-// AI 智能搜索：先做普通搜索，再用 AI 重新排序（简化版，避免 LLM 超时）
+// AI 智能搜索：先用普通搜索获取候选，再用 step-3.5-flash 重新排序
 async function aiSearch(query) {
   try {
-    // 先执行普通搜索获取候选集
+    // 1. 普通搜索获取候选集（最多 50 条）
     const like = `%${query}%`
     const candidates = db.prepare(
       'SELECT id,filename,tags,description FROM images WHERE tags LIKE ? OR description LIKE ? OR filename LIKE ? ORDER BY created_at DESC LIMIT 50'
@@ -119,9 +119,42 @@ async function aiSearch(query) {
 
     if (!candidates.length) return []
 
-    // 普通搜索结果直接返回，currentAI模式只是标记
-    console.log('[AI搜索] 普通搜索模式，返回', candidates.length, '条')
-    return candidates.map(c => ({ id: c.id, score: 1.0 }))
+    console.log('[AI搜索] 普通搜索找到', candidates.length, '条，调用 step-3.5-flash 重新排序')
+
+    // 2. 调用 step-3.5-flash 模型重新排序
+    const BASE_URL = _dg()
+    const SECRET = process.env.INTERNAL_API_SECRET || ''
+    const content = await callAPI(BASE_URL, SECRET, {
+      model: 'step-3.5-flash',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: `用户搜索："${query}"\n请从以下 ${candidates.length} 张图片中，根据标签和描述匹配度排序（最相关排前面）。只返回纯 JSON 数组，格式：["id1","id2",...]\n图片数据：${JSON.stringify(candidates)}` }
+        ]
+      }],
+      temperature: 0.2,
+      max_tokens: 2000
+    }) as string
+
+    if (!content) return candidates.map(c => ({ id: c.id, score: 1.0 }))
+
+    const match = content.match(/\[.*?\]/s)
+    if (!match) return candidates.map(c => ({ id: c.id, score: 1.0 }))
+
+    const sortedIds = JSON.parse(match[0])
+    console.log('[AI搜索] LLM 返回排序 IDs:', sortedIds.length, '条')
+
+    // 3. 按 LLM 排序返回，并分配分数
+    const idSet = new Set(sortedIds)
+    const scoreMap = new Map()
+    sortedIds.forEach((id: string, idx: number) => {
+      scoreMap.set(id, 1 - idx / sortedIds.length) // 排名越前分数越高
+    })
+
+    return candidates
+      .filter(c => idSet.has(c.id))
+      .sort((a, b) => (scoreMap.get(b.id) || 0) - (scoreMap.get(a.id) || 0))
+      .map(c => ({ id: c.id, score: scoreMap.get(c.id) || 1.0 }))
   } catch (e) {
     console.error('[AI搜索]', e.message)
     return []
