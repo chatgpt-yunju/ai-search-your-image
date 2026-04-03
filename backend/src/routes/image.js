@@ -114,24 +114,21 @@ async function aiSearch(query) {
     const BASE_URL = _dg()
     const SECRET = process.env.INTERNAL_API_SECRET || ''
     // 获取所有图片元数据（限制数量避免 token 超限）
-    const all = db.prepare("SELECT id,filename,ext,size,width,height,tags,description FROM images LIMIT 200").all()
+    const all = db.prepare("SELECT id,filename,tags,description FROM images LIMIT 100").all()
     const candidates = all.map(row => ({
       id: row.id,
       filename: row.filename,
-      ext: row.ext,
-      size: row.size,
-      width: row.width,
-      height: row.height,
       tags: JSON.parse(row.tags || '[]'),
       description: row.description || ''
     }))
 
+    // 更简化的 prompt，明确返回纯 JSON 数组
     const content = await callAPI(BASE_URL, SECRET, {
       model: 'llama-3.2-90b-vision-instruct',
       messages: [{
         role: 'user',
         content: [
-          { type: 'text', text: `用户搜索：${query}\n\n图片库元数据（JSON）：\n${JSON.stringify(candidates, null, 2)}\n\n请根据用户搜索意图，找出最相关的图片。返回JSON格式：{"matches":[{"id":"图片ID","score":0.95,"reason":"匹配原因"}]}。score为0-1的匹配度分数。只返回JSON，不要任何其他内容。` }
+          { type: 'text', text: `搜索：${query}\n\n图片数据：${JSON.stringify(candidates)}\n\n返回最相关的图片ID数组，JSON格式：["id1","id2","id3"]` }
         ]
       }],
       temperature: 0.2,
@@ -139,10 +136,10 @@ async function aiSearch(query) {
     })
 
     if (!content) return []
-    const match = content.match(/\{[\s\S]*?\}/)
+    const match = content.match(/\[.*\]/)
     if (!match) return []
-    const result = JSON.parse(match[0])
-    return Array.isArray(result.matches) ? result.matches : []
+    const ids = JSON.parse(match[0])
+    return ids.map(id => ({ id, score: 1.0 }))
   } catch (e) {
     console.error('[AI搜索]', e.message)
     return []
@@ -233,10 +230,11 @@ router.get('/ai-search', async (req, res) => {
     const placeholders = ids.map(() => '?').join(',')
     const rows = db.prepare(`SELECT * FROM images WHERE id IN (${placeholders})`).all(...ids)
     const map = new Map(rows.map(r => [r.id, r]))
+    const scoreMap = new Map(matches.map(m => [m.id, m.score]))
     const results = matches
       .map(m => map.get(m.id))
       .filter(Boolean)
-      .map(r => ({ ...r, tags: JSON.parse(r.tags || '[]'), score: matches.find(m => m.id === r.id).score, reason: matches.find(m => m.id === r.id).reason }))
+      .map(r => ({ ...r, tags: JSON.parse(r.tags || '[]'), score: scoreMap.get(r.id) || 1.0 }))
       .sort((a, b) => b.score - a.score)
     res.json({ list: results })
   } catch (e) {

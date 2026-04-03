@@ -104,7 +104,6 @@
           <div class="detail-meta">
             {{ detail.width }}×{{ detail.height }} · {{ formatSize(detail.compressed_size) }} (原 {{ formatSize(detail.size) }})
             <span v-if="detail.score !== undefined" class="ai-score">🎯 AI匹配度: {{ Math.round(detail.score * 100) }}%</span>
-            <span v-if="detail.reason" class="ai-reason">（{{ detail.reason }}）</span>
           </div>
           <div class="detail-desc" v-if="detail.description">{{ detail.description }}</div>
           <div class="detail-tags">
