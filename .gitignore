@@ -1,0 +1,8 @@
+node_modules/
+dist/
+backend/node_modules/
+*.db
+*.env
+.env
+backend/.env
+/home/ubuntu/imgbed-storage/
