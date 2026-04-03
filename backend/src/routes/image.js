@@ -135,7 +135,7 @@ async function aiSearch(query) {
       messages: [{
         role: 'user',
         content: [
-          { type: 'text', text: `用户搜索："${query}"\n请从以下 ${candidates.length} 张图片中，根据标签和描述匹配度排序（最相关排前面）。只返回纯 JSON 数组，格式：["id1","id2",...]\n图片数据：${JSON.stringify(candidates)}` }
+          { type: 'text', text: `用户搜索："${query}"\n请从以下 ${candidates.length} 张图片中，根据标签和描述匹配度排序（最相关排前面）。\n\n严格指令：只返回纯 JSON 数组，格式：["id1","id2","id3"]\n不要包含任何解释、思考过程、额外文字。只返回数组。\n\n图片数据：${JSON.stringify(candidates)}` }
         ]
       }],
       temperature: 0.2,
@@ -144,21 +144,33 @@ async function aiSearch(query) {
 
     if (!content) return candidates.map(c => ({ id: c.id, score: 1.0 }))
 
-    const match = content.match(/\[.*?\]/s)
-    if (!match) return candidates.map(c => ({ id: c.id, score: 1.0 }))
+    // 尝试提取 JSON 数组（支持首尾空格）
+    const trimmed = content.trim()
+    const match = trimmed.match(/^\[.*\]$/s)
+    if (!match) {
+      // 尝试从内容中查找第一个 JSON 数组
+      const fallback = trimmed.match(/\[.*?\]/s)
+      if (!fallback) return candidates.map(c => ({ id: c.id, score: 1.0 }))
+      console.log('[AI搜索] 提取到数组（含前后内容）')
+    }
 
-    const sortedIds = JSON.parse(match[0])
-    console.log('[AI搜索] LLM 返回排序 IDs:', sortedIds.length, '条')
+    const ids = JSON.parse(match ? match[0] : fallback[0])
+    console.log('[AI搜索] LLM 返回排序 IDs:', ids.length, '条')
 
     // 3. 按 LLM 排序返回，并分配分数
-    const idSet = new Set(sortedIds)
+    const seen = new Set()
+    const uniqueIds = ids.filter(id => {
+      if (seen.has(id)) return false
+      seen.add(id)
+      return true
+    })
     const scoreMap = new Map()
-    sortedIds.forEach((id, idx) => {
-      scoreMap.set(id, 1 - idx / sortedIds.length) // 排名越前分数越高
+    uniqueIds.forEach((id, idx) => {
+      scoreMap.set(id, 1 - idx / uniqueIds.length) // 排名越前分数越高
     })
 
     return candidates
-      .filter(c => idSet.has(c.id))
+      .filter(c => scoreMap.has(c.id))
       .sort((a, b) => (scoreMap.get(b.id) || 0) - (scoreMap.get(a.id) || 0))
       .map(c => ({ id: c.id, score: scoreMap.get(c.id) || 1.0 }))
   } catch (e) {
