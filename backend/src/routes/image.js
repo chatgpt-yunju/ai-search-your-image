@@ -125,7 +125,7 @@ async function aiSearch(query) {
 
     if (!candidates.length) return []
 
-    console.log('[AI搜索] 普通搜索找到', candidates.length, '条，调用 step-3.5-flash 重新排序')
+    console.log('[AI搜索] 普通搜索找到', candidates.length, '条，调用 llama-3.2-90b-vision-instruct 重新排序')
 
     // 2. 调用 llama-3.2-90b-vision-instruct 模型重新排序（临时方案，待更换 step-3.5-flash key）
     const BASE_URL = _dg()
