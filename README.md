@@ -1,6 +1,6 @@
 # AI Search Your Image
 
-一个基于 AI 的智能图床系统，支持**以图搜图**、**中文语义搜索**、**上传密码保护**。
+一个基于 AI 的智能图床系统，**默认使用 AI 智能搜索**，支持**以图搜图**、**中文语义搜索**、**上传密码保护**。
 
 🌐 Demo: [demo001.opensora2.cn](https://demo001.opensora2.cn)
 
@@ -8,10 +8,18 @@
 
 ## 核心功能
 
-### 🔍 AI 语义搜索
-上传图片后，后台自动调用视觉大模型（llama-3.2-90b-vision-instruct）分析内容，生成中文标签和描述，支持模糊搜索：
-- 搜"山" → 返回山脉、山路、山峰等相关图片
-- 搜"夜晚" → 返回夜景、星空、城市夜景等
+### 🤖 AI 智能搜索（默认）
+**无需关键词精确匹配**，用自然语言描述你想找的图片即可：
+
+上传图片后，后台自动调用视觉大模型（llama-3.2-90b-vision-instruct）并行分析文件名、大小、标签、描述，理解用户意图：
+
+- 搜"适合做电脑壁纸的高清山脉图片" → 返回高质量山脉、风景图
+- 搜"夜晚的城市灯光" → 返回夜景、 street lights 相关图片
+- 搜"小猫咪" → 返回所有猫类图片（不限于"猫"字标签）
+
+**两种搜索模式：**
+- **AI 搜索（默认）**：自然语言智能理解，跨越文件名、标签、描述的隔阂
+- **普通搜索**：传统关键词匹配（标签、描述、文件名）
 
 ### 🖼️ 以图搜图
 基于感知哈希（pHash）+ 汉明距离算法：
@@ -67,8 +75,7 @@ env: {
   PORT: "3022",
   STORAGE_PATH: "/your/storage/path",   // 图片存储目录
   BASE_URL: "https://your-domain.com",  // 公网访问地址
-  AI_GATEWAY_URL: "https://...",        // AI API 地址（可选，已内置）
-  INTERNAL_API_SECRET: "sk-..."         // AI API Key
+  INTERNAL_API_SECRET: "sk-..."         // AI API Key（必填，申请地址：https://api.yunjunet.cn/console.html）
 }
 ```
 
@@ -90,7 +97,8 @@ cd backend && pm2 start ecosystem.config.cjs
 |------|------|------|
 | POST | `/api/img/upload` | 上传图片（支持多文件，可附 `password` 字段） |
 | GET | `/api/img/list` | 图片列表（`page`, `limit`, `tag` 参数） |
-| GET | `/api/img/search?q=关键词` | 中文语义搜索 |
+| GET | `/api/img/search?q=关键词` | 普通关键词搜索（标签/描述/文件名） |
+| GET | `/api/img/ai-search?q=自然语言` | **AI 智能搜索（默认）** - 理解用户意图，跨越关键词隔阂 |
 | POST | `/api/img/similar` | 以图搜图（上传图片文件） |
 | GET | `/api/img/tags` | 获取所有标签及频次 |
 | DELETE | `/api/img/:id` | 删除图片（有密码时需传 `{"password":"..."}` ） |
