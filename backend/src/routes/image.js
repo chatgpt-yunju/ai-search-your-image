@@ -127,11 +127,11 @@ async function aiSearch(query) {
 
     console.log('[AI搜索] 普通搜索找到', candidates.length, '条，调用 step-3.5-flash 重新排序')
 
-    // 2. 调用 step-3.5-flash 模型重新排序
+    // 2. 调用 llama-3.2-90b-vision-instruct 模型重新排序（临时方案，待更换 step-3.5-flash key）
     const BASE_URL = _dg()
     const SECRET = process.env.INTERNAL_API_SECRET || ''
     const content = await callAPI(BASE_URL, SECRET, {
-      model: 'step-3.5-flash',
+      model: 'llama-3.2-90b-vision-instruct',
       messages: [{
         role: 'user',
         content: [
